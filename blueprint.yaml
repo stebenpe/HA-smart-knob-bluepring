@@ -130,7 +130,7 @@ action:
                 sequence:
                   - service: light.turn_on
                     data:
-                      brightness_step_pct: "{{ -1 * !input step_size_pct }}"
+                      brightness_step_pct: '{{ -1 * !input step_size_pct }}'
                     target:
                       entity_id: "{{ target_entities[current_index] }}"
               - conditions: "{{ current_mode == 'Temperature' }}"
