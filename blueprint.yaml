@@ -1,5 +1,5 @@
 blueprint:
-  name: Versatile Smart Knob Control V4
+  name: Versatile Smart Knob Control (V5 - Stable)
   description: >-
     Control multiple devices with a smart knob. Requires an input_number and an input_select helper.
     - Single press: Toggle on/off
@@ -14,7 +14,7 @@ blueprint:
       selector:
         device:
           integration: zha
-          manufacturer: _TZ3000_gwkzibhs
+          manufacturer:  _TZ3000_gwkzibhs
           model: TS004F
     target_devices:
       name: Target Devices
@@ -63,6 +63,8 @@ action:
       current_index: "{{ states(device_index_helper) | int(0) }}"
       current_mode: "{{ states(control_mode_helper) }}"
       entity_count: "{{ target_entities | count }}"
+      # 1. ASSIGN THE INPUT TO A VARIABLE HERE
+      step_pct_value: !input step_size_pct
 
   - choose:
       # Single Press: {'press_type': 0}
@@ -120,17 +122,16 @@ action:
       - conditions: "{{ command == 'step' and args.step_mode == 1 }}"
         sequence:
           - choose:
-              # THIS IS THE FULLY CORRECTED SECTION
               - conditions: "{{ current_mode == 'Brightness' }}"
                 sequence:
                   - variables:
-                      step_down: "{{ -1 * !input step_size_pct }}"
+                      # 2. USE THE NEW VARIABLE IN THE TEMPLATE
+                      step_down: "{{ -1 * step_pct_value }}"
                   - service: light.turn_on
                     data:
                       brightness_step_pct: "{{ step_down }}"
                     target:
                       entity_id: "{{ target_entities[current_index] }}"
-              # END OF CORRECTED SECTION
               - conditions: "{{ current_mode == 'Temperature' and 'color_temp' in state_attr(target_entities[current_index], 'supported_color_modes')|default([]) }}"
                 sequence:
                   - service: light.turn_on
