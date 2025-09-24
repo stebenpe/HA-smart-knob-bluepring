@@ -14,8 +14,7 @@ blueprint:
       selector:
         device:
           integration: zha
-          # IMPORTANT: Change manufacturer and model to match your device
-          manufacturer: TuYa
+          manufacturer: _TZ3000_gwkzibhs
           model: TS004F
     target_devices:
       name: Target Devices
