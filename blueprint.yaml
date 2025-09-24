@@ -1,7 +1,7 @@
 blueprint:
-  name: Versatile Smart Knob Control V2
+  name: Versatile Smart Knob Control V4
   description: >-
-    Control multiple devices with a smart knob. This version requires you to create an input_number and an input_select helper first.
+    Control multiple devices with a smart knob. Requires an input_number and an input_select helper.
     - Single press: Toggle on/off
     - Double press: Cycle through devices
     - Long press: Cycle through control modes (brightness, temperature, color)
@@ -25,7 +25,6 @@ blueprint:
             - light
             - fan
           multiple: true
-    # New inputs for the helpers
     device_index_helper:
       name: Device Index Helper
       description: The 'input_number' helper that stores the current device index.
@@ -38,7 +37,6 @@ blueprint:
       selector:
         entity:
           domain: input_select
-    # Step size for rotation
     step_size_pct:
       name: Brightness Step Percentage
       description: The percentage to adjust brightness on each rotation tick.
@@ -49,7 +47,6 @@ blueprint:
           max: 50
           unit_of_measurement: "%"
 
-# Based on your logs, we now use the 'args' from the zha_event
 trigger:
   - platform: event
     event_type: zha_event
@@ -58,27 +55,24 @@ trigger:
 
 action:
   - variables:
-      # Map the log values to actions
       command: "{{ trigger.event.data.command }}"
       args: "{{ trigger.event.data.args }}"
-      # Target entities and helpers
       target_entities: !input target_devices
       device_index_helper: !input device_index_helper
       control_mode_helper: !input control_mode_helper
-      # Get current state from helpers
       current_index: "{{ states(device_index_helper) | int(0) }}"
       current_mode: "{{ states(control_mode_helper) }}"
       entity_count: "{{ target_entities | count }}"
 
   - choose:
-      # Single Press: {'press_type': 0} -> command: 'press'
+      # Single Press: {'press_type': 0}
       - conditions: "{{ command == 'press' and args.press_type == 0 }}"
         sequence:
           - service: homeassistant.toggle
             target:
               entity_id: "{{ target_entities[current_index] }}"
 
-      # Double Press: {'press_type': 1} -> command: 'press'
+      # Double Press: {'press_type': 1}
       - conditions: "{{ command == 'press' and args.press_type == 1 }}"
         sequence:
           - service: input_number.set_value
@@ -87,7 +81,7 @@ action:
             data:
               value: "{{ (current_index + 1) % entity_count }}"
 
-      # Long Press: {'press_type': 2} -> command: 'press'
+      # Long Press: {'press_type': 2}
       - conditions: "{{ command == 'press' and args.press_type == 2 }}"
         sequence:
           - service: input_select.select_next
@@ -96,7 +90,7 @@ action:
             data:
               cycle: true
 
-      # Rotate Right: {'step_mode': <StepMode.Up: 0>, ...} -> command: 'step'
+      # Rotate Right: {'step_mode': 0}
       - conditions: "{{ command == 'step' and args.step_mode == 0 }}"
         sequence:
           - choose:
@@ -107,44 +101,48 @@ action:
                       brightness_step_pct: !input step_size_pct
                     target:
                       entity_id: "{{ target_entities[current_index] }}"
-              - conditions: "{{ current_mode == 'Temperature' }}"
+              - conditions: "{{ current_mode == 'Temperature' and 'color_temp' in state_attr(target_entities[current_index], 'supported_color_modes')|default([]) }}"
                 sequence:
                   - service: light.turn_on
                     data:
-                      color_temp_step: 150 # Adjust value as needed
+                      color_temp_step: 150
                     target:
                       entity_id: "{{ target_entities[current_index] }}"
-              - conditions: "{{ current_mode == 'Color' }}"
+              - conditions: "{{ current_mode == 'Color' and ('hs' in state_attr(target_entities[current_index], 'supported_color_modes')|default([]) or 'rgb' in state_attr(target_entities[current_index], 'supported_color_modes')|default([])) }}"
                 sequence:
                   - service: light.turn_on
                     data:
-                      hue_step: 30 # Adjust value as needed
+                      hue_step: 30
                     target:
                       entity_id: "{{ target_entities[current_index] }}"
 
-      # Rotate Left: {'step_mode': <StepMode.Down: 1>, ...} -> command: 'step'
+      # Rotate Left: {'step_mode': 1}
       - conditions: "{{ command == 'step' and args.step_mode == 1 }}"
         sequence:
           - choose:
+              # THIS IS THE FULLY CORRECTED SECTION
               - conditions: "{{ current_mode == 'Brightness' }}"
                 sequence:
+                  - variables:
+                      step_down: "{{ -1 * !input step_size_pct }}"
                   - service: light.turn_on
                     data:
-                      brightness_step_pct: '{{ -1 * !input step_size_pct }}'
+                      brightness_step_pct: "{{ step_down }}"
                     target:
                       entity_id: "{{ target_entities[current_index] }}"
-              - conditions: "{{ current_mode == 'Temperature' }}"
+              # END OF CORRECTED SECTION
+              - conditions: "{{ current_mode == 'Temperature' and 'color_temp' in state_attr(target_entities[current_index], 'supported_color_modes')|default([]) }}"
                 sequence:
                   - service: light.turn_on
                     data:
-                      color_temp_step: -150 # Adjust value as needed
+                      color_temp_step: -150
                     target:
                       entity_id: "{{ target_entities[current_index] }}"
-              - conditions: "{{ current_mode == 'Color' }}"
+              - conditions: "{{ current_mode == 'Color' and ('hs' in state_attr(target_entities[current_index], 'supported_color_modes')|default([]) or 'rgb' in state_attr(target_entities[current_index], 'supported_color_modes')|default([])) }}"
                 sequence:
                   - service: light.turn_on
                     data:
-                      hue_step: -30 # Adjust value as needed
+                      hue_step: -30
                     target:
                       entity_id: "{{ target_entities[current_index] }}"
 mode: single
