@@ -1,0 +1,174 @@
+blueprint:
+  name: Versatile Smart Knob Control
+  description: >-
+    Control multiple devices and their attributes with a single smart knob.
+    - Single press: Toggle on/off
+    - Double press: Cycle through devices
+    - Long press: Cycle through control modes (brightness, temperature, color)
+    - Rotate: Adjust the selected mode's value
+  domain: automation
+  input:
+    knob_remote:
+      name: Smart Knob Remote
+      description: The remote entity for your smart knob.
+      selector:
+        device:
+          integration: zha
+          manufacturer: TuYa
+          model: TS004F
+    target_devices:
+      name: Target Devices
+      description: A list of light or fan entities to control.
+      selector:
+        entity:
+          domain:
+            - light
+            - fan
+          multiple: true
+    step_size:
+      name: Rotation Step Size
+      description: The number of steps to adjust the value on each rotation tick.
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 50
+          step: 1
+          mode: slider
+
+# Helper entities to store the current state
+input_number:
+  current_device_index:
+    name: Current Device Index
+    initial: 0
+    min: 0
+    max: 100 # Adjust as needed
+    step: 1
+
+input_select:
+  control_mode:
+    name: Control Mode
+    options:
+      - Brightness
+      - Temperature
+      - Color
+    initial: Brightness
+
+trigger:
+  - platform: event
+    event_type: zha_event
+    event_data:
+      device_id: !input knob_remote
+
+action:
+  - variables:
+      press_type: "{{ trigger.event.data.command }}"
+      step_mode: "{{ trigger.event.data.args.step_mode }}"
+      step_size_raw: "{{ trigger.event.data.args.step_size }}"
+      target_entities: !input target_devices
+      current_index: "{{ states('input_number.current_device_index') | int }}"
+      current_mode: "{{ states('input_select.control_mode') }}"
+      entity_count: "{{ target_entities | count }}"
+
+  - choose:
+      # Single Press: Toggle device
+      - conditions:
+          - "{{ press_type == 'toggle' }}"
+        sequence:
+          - service: homeassistant.toggle
+            target:
+              entity_id: "{{ target_entities[current_index] }}"
+
+      # Double Press: Switch to the next device
+      - conditions:
+          - "{{ press_type == 'on' }}" # Based on the provided logs, double press is not standard. Using 'on' as a placeholder.
+        sequence:
+          - service: input_number.set_value
+            target:
+              entity_id: input_number.current_device_index
+            data:
+              value: "{{ (current_index + 1) % entity_count }}"
+
+      # Long Press: Switch control mode
+      - conditions:
+          - "{{ press_type == 'off' }}" # Based on the provided logs, long press is not standard. Using 'off' as a placeholder.
+        sequence:
+          - service: input_select.select_next
+            target:
+              entity_id: input_select.control_mode
+
+      # Rotate Right: Increase value
+      - conditions:
+          - "{{ step_mode == 0 }}" # StepMode.Up
+        sequence:
+          - choose:
+              # Adjust Brightness
+              - conditions:
+                  - "{{ current_mode == 'Brightness' }}"
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness_step_pct: "{{ !input step_size }}"
+                    target:
+                      entity_id: "{{ target_entities[current_index] }}"
+
+              # Adjust Color Temperature
+              - conditions:
+                  - "{{ current_mode == 'Temperature' }}"
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      kelvin: "{{ state_attr(target_entities[current_index], 'kelvin') + (100 * !input step_size) }}"
+                    target:
+                      entity_id: "{{ target_entities[current_index] }}"
+
+              # Adjust Color (Hue)
+              - conditions:
+                  - "{{ current_mode == 'Color' }}"
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      hs_color:
+                        - "{{ (state_attr(target_entities[current_index], 'hs_color')[0] + (10 * !input step_size)) % 360 }}"
+                        - "{{ state_attr(target_entities[current_index], 'hs_color')[1] }}"
+                    target:
+                      entity_id: "{{ target_entities[current_index] }}"
+
+      # Rotate Left: Decrease value
+      - conditions:
+          - "{{ step_mode == 1 }}" # StepMode.Down
+        sequence:
+          - choose:
+              # Adjust Brightness
+              - conditions:
+                  - "{{ current_mode == 'Brightness' }}"
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      brightness_step_pct: "{{ -!input step_size }}"
+                    target:
+                      entity_id: "{{ target_entities[current_index] }}"
+
+              # Adjust Color Temperature
+              - conditions:
+                  - "{{ current_mode == 'Temperature' }}"
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      kelvin: "{{ state_attr(target_entities[current_index], 'kelvin') - (100 * !input step_size) }}"
+                    target:
+                      entity_id: "{{ target_entities[current_index] }}"
+
+              # Adjust Color (Hue)
+              - conditions:
+                  - "{{ current_mode == 'Color' }}"
+                sequence:
+                  - service: light.turn_on
+                    data:
+                      hs_color:
+                        - "{{ (state_attr(target_entities[current_index], 'hs_color')[0] - (10 * !input step_size)) % 360 }}"
+                        - "{{ state_attr(target_entities[current_index], 'hs_color')[1] }}"
+                    target:
+                      entity_id: "{{ target_entities[current_index] }}"
+
+mode: single
